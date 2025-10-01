@@ -1,6 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// 1. Public pages – no auth required
 const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
@@ -8,8 +7,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/(.*)",
 ]);
 
-// 2. Role → dashboard map
-const afterAuthMap: Record<string, string> = {
+const roleMap: Record<string, string> = {
   patient: "/patient/dashboard",
   doctor: "/doctor/dashboard",
   subadmin: "/sub-admin/dashboard",
@@ -20,29 +18,26 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
   const url = new URL(req.url);
 
-  /* 3. KICK user OUT of any org-related path immediately */
+  /* 1. BANISH any org path (sign-in OR sign-up) instantly */
   if (
-    url.pathname.startsWith("/create-organization") ||
-    url.pathname.startsWith("/select-organization") ||
-    url.pathname.startsWith("/sign-in/tasks/choose-organization")
+    url.pathname.includes("choose-organization") ||
+    url.pathname.includes("create-organization") ||
+    url.pathname.includes("select-organization")
   ) {
     const role = (sessionClaims?.publicMetadata as any)?.role ?? "patient";
-    return Response.redirect(new URL(afterAuthMap[role] ?? "/patient/dashboard", req.url));
+    return Response.redirect(new URL(roleMap[role] ?? "/patient/dashboard", req.url));
   }
 
-  /* 4. Protect private routes */
+  /* 2. Protect private routes */
   if (!isPublicRoute(req)) await auth.protect();
 
-  /* 5. After sign-up/in skip org screens */
-  if (userId && (url.pathname === "/sign-up" || url.pathname === "/sign-in")) {
+  /* 3. After sign-in/up skip org screens */
+  if (userId && (url.pathname === "/sign-in" || url.pathname === "/sign-up")) {
     const role = (sessionClaims?.publicMetadata as any)?.role ?? "patient";
-    return Response.redirect(new URL(afterAuthMap[role] ?? "/patient/dashboard", req.url));
+    return Response.redirect(new URL(roleMap[role] ?? "/patient/dashboard", req.url));
   }
 });
 
 export const config = {
-  matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
-  ],
+  matcher: ["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)", "/(api|trpc)(.*)"],
 };

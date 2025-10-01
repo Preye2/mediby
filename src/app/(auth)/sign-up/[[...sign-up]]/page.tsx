@@ -1,6 +1,5 @@
 "use client";
-
-import { useSignUp } from "@clerk/nextjs";
+import { SignUp, useSignUp } from "@clerk/nextjs";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -9,28 +8,37 @@ export default function SignUpPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoaded || !signUp) return; // ⛔ guard
+    if (!isLoaded || !signUp) return;
 
-    // Patch role BEFORE completion
+    // 1. Patch role BEFORE completion
     signUp.update({ unsafeMetadata: { role: "patient" } });
-  }, [isLoaded, signUp]);
 
-  useEffect(() => {
-    if (!signUp) return; // ⛔ guard
+    // 2. If Clerk tries to show org stuff → skip it
     if (signUp.status === "complete" && signUp.createdSessionId) {
       setActive?.({ session: signUp.createdSessionId }).then(() => {
         router.push("/patient/dashboard");
       });
     }
-  }, [signUp, setActive, router]);
+  }, [isLoaded, signUp, setActive, router]);
 
-  if (!isLoaded || !signUp) return null; // ⛔ guard
+  // 3. POST-GOOGLE trap – if URL bar ever contains org → instant redirect
+  useEffect(() => {
+    if (window.location.href.includes("choose-organization") || window.location.href.includes("create-organization")) {
+      router.replace("/patient/dashboard");
+    }
+  }, [router]);
 
   return (
     <div className="min-h-screen grid place-items-center bg-gradient-to-br from-purple-100 to-pink-100">
       <div className="glass p-8 rounded-2xl w-full max-w-md">
         <h1 className="text-2xl font-bold text-center mb-4">Patient Sign Up</h1>
-        <div className="clerk-sign-up-container" />
+        <SignUp
+          routing="path"
+          path="/sign-up"
+          afterSignUpUrl="/patient/dashboard"
+          redirectUrl="/patient/dashboard"
+          unsafeMetadata={{ role: "patient" }}
+        />
       </div>
     </div>
   );
