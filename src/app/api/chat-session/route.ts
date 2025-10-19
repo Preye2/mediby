@@ -1,99 +1,135 @@
-import { database } from '@/config/database';
-import { SessionChatTable } from '@/config/userSchema';
-import { currentUser } from '@clerk/nextjs/server';
-import { desc, eq } from 'drizzle-orm';
-import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+// src/app/api/chat-session/route.ts
+import { NextResponse } from "next/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { database } from "@/config/database";
+import { SessionChatTable, users } from "@/config/userSchema";
+import { eq, desc, and, sql } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
 
+/* ----------  helper  ---------- */
+function normaliseDoctor(input: unknown): { id: string; name: string } {
+  if (typeof input === "string") return { id: input, name: input };
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "id" in input &&
+    "name" in input
+  )
+    return input as { id: string; name: string };
+  throw new Error("selectedDoctor must be string or {id,name}");
+}
 
-export async function POST(req: NextRequest) {
+/* ----------  POST  ---------- */
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
-    const { notes, selectedDoctor } = body;
+    const body = await request.json();
+    const { notes, selectedDoctor: rawDoctor } = body;
 
-    if (!notes || !selectedDoctor) {
+    if (!notes || !rawDoctor)
       return NextResponse.json(
-        { error: 'Notes and selected doctor are required.' },
+        { error: "notes and selectedDoctor are required" },
         { status: 400 }
       );
+
+    const { userId } = await auth();
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    /* 1.  Safe user fetch + upsert */
+    let email = `${userId}@clerk.user`;
+    let name = "User";
+    try {
+      const client = await clerkClient();
+      const user = await client.users.getUser(userId);
+      email = user.emailAddresses[0]?.emailAddress ?? email;
+      name =
+        [user.firstName, user.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || email.split("@")[0];
+    } catch {
+      /* Clerk unavailable – use fallbacks */
     }
 
-    const user = await currentUser();
+    await database
+      .insert(users)
+      .values({ clerkId: userId, email, name })
+      .onConflictDoNothing();
+    const [row] = await database
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
+    if (!row) throw new Error("User row still missing after upsert");
 
-    if (!user || !user.primaryEmailAddress?.emailAddress) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    /* 2.  Create session – JSON cast + Date */
     const sessionId = uuidv4();
-    // @ts-ignore
     await database.insert(SessionChatTable).values({
       sessionId,
       note: notes,
-      conversation: [],
-      selectedDoctor: JSON.stringify(selectedDoctor),
-      report: {},
-      status: 'active',
-      createdBy: user.primaryEmailAddress.emailAddress,
-      createdOn: new Date().toISOString(),
+      conversation: sql`${JSON.stringify([])}::jsonb`,
+      selectedDoctor: sql`${JSON.stringify(normaliseDoctor(rawDoctor))}::jsonb`,
+      report: sql`${JSON.stringify({})}::jsonb`,
+      status: "active",
+      userId,
+      createdBy: email,
+      createdOn: new Date(), // Date → timestamp
     });
-    console.log("Sending selected doctor:", selectedDoctor);
 
     return NextResponse.json({ sessionId }, { status: 201 });
-
-  } catch (error: any) {
-    console.error('POST /chat-session error:', error);
+  } catch (err: any) {
+    console.error("❌ POST /api/chat-session error:", err.message ?? err);
     return NextResponse.json(
-      { error: error?.message || 'Internal Server Error' },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
 }
 
-export async function GET(req: NextRequest) {
+/* ----------  GET  ---------- */
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const sessionId = searchParams.get("sessionId");
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get("sessionId") ?? "all";
+    const { userId } = await auth();
 
-    const user = await currentUser();
-
-    if (!user || !user.primaryEmailAddress?.emailAddress) {
+    if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (sessionId === "check")
+      return NextResponse.json({ ok: true, userId });
 
-    if (sessionId === 'all') {
-      const result = await database
+    if (sessionId === "all") {
+      const rows = await database
         .select()
         .from(SessionChatTable)
-        // @ts-ignore
-        .where(eq(SessionChatTable.createdBy, user.primaryEmailAddress.emailAddress))
-        // @ts-ignore
-        .orderBy(desc(SessionChatTable.id));
-      console.log("sessionId param:", sessionId);
-      console.log("current user:", user?.primaryEmailAddress?.emailAddress);
-
-      return NextResponse.json(result);
-    } else {
-      const result = await database
-        .select()
-        .from(SessionChatTable)
-        // @ts-ignore
-        .where(eq(SessionChatTable.sessionId, sessionId));
-
-      if (!result || result.length === 0) {
-        return NextResponse.json({ error: "Session not found" }, { status: 404 });
-      }
-
-      return NextResponse.json(result);
+        .where(eq(SessionChatTable.userId, userId))
+        .orderBy(desc(SessionChatTable.createdOn))
+        .limit(50);
+      return NextResponse.json(rows);
     }
 
+    const [row] = await database
+      .select()
+      .from(SessionChatTable)
+      .where(
+        and(
+          eq(SessionChatTable.sessionId, sessionId),
+          eq(SessionChatTable.userId, userId)
+        )
+      )
+      .limit(1);
 
-  } catch (error: any) {
-    console.error("GET /chat-session error:", error);
+    if (!row)
+      return NextResponse.json(
+        { error: "Session not found" },
+        { status: 404 }
+      );
+    return NextResponse.json(row);
+  } catch (err: any) {
+    console.error("❌ GET /api/chat-session error:", err.message ?? err);
     return NextResponse.json(
-      { error: error?.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
 }
-
-

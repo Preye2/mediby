@@ -1,11 +1,13 @@
 "use client";
 import { SignUp, useSignUp } from "@clerk/nextjs";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 
 export default function SignUpPage() {
   const { signUp, isLoaded, setActive } = useSignUp();
   const router = useRouter();
+  const [inserted, setInserted] = useState(false); // prevent double insert
 
   useEffect(() => {
     if (!isLoaded || !signUp) return;
@@ -13,15 +15,20 @@ export default function SignUpPage() {
     // 1. Patch role BEFORE completion
     signUp.update({ unsafeMetadata: { role: "patient" } });
 
-    // 2. If Clerk tries to show org stuff → skip it
-    if (signUp.status === "complete" && signUp.createdSessionId) {
+    // 2. After Clerk success → insert into YOUR database
+    if (signUp.status === "complete" && signUp.createdSessionId && !inserted) {
+      setInserted(true); // lock
+      const email = signUp.emailAddress;
+      const name = `${signUp.firstName || ""} ${signUp.lastName || ""}`.trim() || "Patient";
+      axios.post("/api/after-clerk-signup", { name, email }).catch(console.error);
+
       setActive?.({ session: signUp.createdSessionId }).then(() => {
         router.push("/patient/dashboard");
       });
     }
-  }, [isLoaded, signUp, setActive, router]);
+  }, [isLoaded, signUp, setActive, router, inserted]);
 
-  // 3. POST-GOOGLE trap – if URL bar ever contains org → instant redirect
+  // 3. POST-GOOGLE trap – skip org screen
   useEffect(() => {
     if (window.location.href.includes("choose-organization") || window.location.href.includes("create-organization")) {
       router.replace("/patient/dashboard");

@@ -5,7 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 import "./globals.css"
 import Provider from "./provider"
-import MotionWrapper from "./_components/MotionWrapper" // 
+import MotionWrapper from "@/components/MotionWrapper" 
 import { Toaster } from "@/components/ui/sonner"
 
 const geistSans = Geist({
@@ -19,8 +19,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Our AI HealthMate",
-  description: "AI HealthMate is a voice-powered medical assistant that connects you with AI doctors for instant, personalized health consultations — anytime, anywhere",
+  title: "MediBY",
+  description: "Multilingual AI doctor, book hospitals, pay with Paystack, join video calls — all in Nigerian languages!",
 }
 
 export default function RootLayout({

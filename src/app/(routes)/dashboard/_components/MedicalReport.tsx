@@ -1,7 +1,7 @@
+// src/app/(routes)/dashboard/_components/MedicalReport.tsx
+'use client';
 
-'use client'
-
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -10,87 +10,106 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { motion } from 'framer-motion'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
-import { SessionParams } from '../medical-voice/[sessionId]/page'
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { motion } from 'framer-motion';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
+/* ----------  local type (replaces broken import)  ---------- */
+type SessionParams = {
+  id?: string;
+  sessionId?: string;
+  note?: string;
+  createdOn: string;
+  selectedDoctor: {
+    name: string;
+    specialty: string;
+    image: string;
+  };
+  report?: {
+    user?: string;
+    symptoms?: string[];
+    duration?: string;
+    severity?: string;
+    medicationsMentioned?: string[];
+    recommendations?: string[];
+    summary?: string;
+  };
+};
+
+/* ----------  props  ---------- */
 type Props = {
-  history: SessionParams[]
-}
+  history: SessionParams[];
+};
 
 function MedicalReport({ history }: Props) {
-  const tableRef = useRef(null)
-  const [search, setSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 5
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
-  const filteredHistory = history.filter((report) =>
-    report.selectedDoctor.name.toLowerCase().includes(search.toLowerCase()) ||
-    report.note?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredHistory = history.filter(
+    (report) =>
+      report.selectedDoctor.name.toLowerCase().includes(search.toLowerCase()) ||
+      (report.note?.toLowerCase() ?? '').includes(search.toLowerCase())
+  );
 
-  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage)
+  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
   const currentItems = filteredHistory.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
-  )
+  );
 
   const exportToPDF = async () => {
-    if (!tableRef.current) return
-    const canvas = await html2canvas(tableRef.current)
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('landscape', 'mm', 'a4')
-    const imgProps = pdf.getImageProperties(imgData)
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-    pdf.save('medical-report.pdf')
-  }
+    if (!tableRef.current) return;
+    const canvas = await html2canvas(tableRef.current);
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('landscape', 'mm', 'a4');
+    const imgProps = pdf.getImageProperties(imgData);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save('medical-report.pdf');
+  };
 
   const handleDownload = (report: SessionParams) => {
-    const doc = new jsPDF()
-    let y = 10
+    const doc = new jsPDF();
+    let y = 10;
 
-    doc.setFontSize(16)
-    doc.text('Medical Report', 10, y)
-    y += 10
+    doc.setFontSize(16);
+    doc.text('Medical Report', 10, y);
+    y += 10;
 
-    doc.setFontSize(12)
-    doc.text(`Session ID: ${report.id || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`AI Assistant: ${report.selectedDoctor?.name || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`User: ${report.report?.user || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Date: ${new Date(report.createdOn).toLocaleString()}`, 10, y)
-    y += 8
+    doc.setFontSize(12);
+    doc.text(`Session ID: ${report.id || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`AI Assistant: ${report.selectedDoctor?.name || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`User: ${report.report?.user || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Date: ${new Date(report.createdOn).toLocaleString()}`, 10, y);
+    y += 8;
 
-    doc.text(`Main Complaint: ${report.note || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Symptoms: ${report.report?.symptoms?.join(', ') || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Duration: ${report.report?.duration || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Severity: ${report.report?.severity || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Medications Mentioned: ${report.report?.medicationsMentioned?.join(', ') || 'N/A'}`, 10, y)
-    y += 8
-    doc.text(`Recommendations: ${report.report?.recommendations?.join(', ') || 'N/A'}`, 10, y)
-    y += 8
+    doc.text(`Main Complaint: ${report.note || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Symptoms: ${report.report?.symptoms?.join(', ') || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Duration: ${report.report?.duration || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Severity: ${report.report?.severity || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Medications Mentioned: ${report.report?.medicationsMentioned?.join(', ') || 'N/A'}`, 10, y);
+    y += 8;
+    doc.text(`Recommendations: ${report.report?.recommendations?.join(', ') || 'N/A'}`, 10, y);
+    y += 8;
 
+    const summary = report.report?.summary || 'N/A';
+    const splitSummary = doc.splitTextToSize(`Summary: ${summary}`, 180);
+    doc.text(splitSummary, 10, y);
 
-    const summary = report.report?.summary || 'N/A'
-    const splitSummary = doc.splitTextToSize(`Summary: ${summary}`, 180)
-    doc.text(splitSummary, 10, y)
-    y += splitSummary.length * 8
-
-
-    doc.save(`medical_report_${report.id || Date.now()}.pdf`)
-  }
-
+    doc.save(`medical_report_${report.id || Date.now()}.pdf`);
+  };
 
   return (
     <motion.div
@@ -120,8 +139,8 @@ function MedicalReport({ history }: Props) {
             placeholder="Search doctor or notes..."
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value)
-              setCurrentPage(1)
+              setSearch(e.target.value);
+              setCurrentPage(1);
             }}
             className="px-4 py-2 rounded bg-gray-700 text-white border border-gray-600 w-full md:w-1/2"
           />
@@ -197,7 +216,7 @@ function MedicalReport({ history }: Props) {
         </div>
       </motion.div>
     </motion.div>
-  )
+  );
 }
 
-export default MedicalReport
+export default MedicalReport;
