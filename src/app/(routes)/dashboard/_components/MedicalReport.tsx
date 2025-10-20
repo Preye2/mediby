@@ -16,9 +16,9 @@ import { motion } from 'framer-motion';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-/* ----------  local type (replaces broken import)  ---------- */
+/* ----------  local type (DB friendly)  ---------- */
 type SessionParams = {
-  id?: string;
+  id: number | string; // ← accept both
   sessionId?: string;
   note?: string;
   createdOn: string;
@@ -43,7 +43,7 @@ type Props = {
   history: SessionParams[];
 };
 
-function MedicalReport({ history }: Props) {
+export default function MedicalReport({ history }: Props) {
   const tableRef = useRef<HTMLTableElement>(null);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,9 +82,9 @@ function MedicalReport({ history }: Props) {
     y += 10;
 
     doc.setFontSize(12);
-    doc.text(`Session ID: ${report.id || 'N/A'}`, 10, y);
+    doc.text(`Session ID: ${report.id}`, 10, y);
     y += 8;
-    doc.text(`AI Assistant: ${report.selectedDoctor?.name || 'N/A'}`, 10, y);
+    doc.text(`AI Assistant: ${report.selectedDoctor.name}`, 10, y);
     y += 8;
     doc.text(`User: ${report.report?.user || 'N/A'}`, 10, y);
     y += 8;
@@ -108,7 +108,7 @@ function MedicalReport({ history }: Props) {
     const splitSummary = doc.splitTextToSize(`Summary: ${summary}`, 180);
     doc.text(splitSummary, 10, y);
 
-    doc.save(`medical_report_${report.id || Date.now()}.pdf`);
+    doc.save(`medical_report_${report.id}.pdf`);
   };
 
   return (
@@ -170,15 +170,15 @@ function MedicalReport({ history }: Props) {
                   </TableCell>
                 </TableRow>
               ) : (
-                currentItems.map((report, index) => (
+                currentItems.map((report) => (
                   <motion.tr
-                    key={index}
+                    key={report.id} // ← stable key
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
+                    transition={{ delay: 0.05 }}
                     className="hover:bg-gray-700 transition-all"
                   >
-                    <TableCell className="font-medium">{report.selectedDoctor?.name || 'N/A'}</TableCell>
+                    <TableCell className="font-medium">{report.selectedDoctor.name}</TableCell>
                     <TableCell>{report.note || '—'}</TableCell>
                     <TableCell>{new Date(report.createdOn).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
@@ -218,5 +218,3 @@ function MedicalReport({ history }: Props) {
     </motion.div>
   );
 }
-
-export default MedicalReport;

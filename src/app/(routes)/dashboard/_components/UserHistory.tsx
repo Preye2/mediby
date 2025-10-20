@@ -1,68 +1,28 @@
+// src/app/(routes)/dashboard/_components/UserHistory.tsx
 "use client";
 
-import { useAuth } from '@clerk/nextjs';
-import { SignInButton } from '@clerk/nextjs';
+import { useAuth, SignInButton } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useAxios } from '@/lib/axios';
-import MedicalReport from '../_components/MedicalReport';
+import MedicalReport from './MedicalReport';
+import { type Session, type AiDoctorAgent } from '@/types/session'; // ← single source
 
-/* ----------  CENTRAL TYPES  ---------- */
-type AiDoctorAgent = {
-  id: number;
-  name: string;
-  specialty: string;
-  description: string;
-  image: string;
-  agentPrompt: string;
-  doctorVoiceId: string;
-};
-
-type Session = {
-  id: number;
-  note: string;
-  sessionId: string;
-  selectedDoctor: AiDoctorAgent;
-  report?: {
-    sessionId: string;
-    agent: string;
-    user: string;
-    timestamp: string;
-    mainComplaint: string;
-    symptoms: string[];
-    summary: string;
-    duration: string;
-    severity: string;
-    medicationsMentioned: string[];
-    recommendations: string[];
-  };
-  createdOn: string;
-  status: string;
-};
-
-/* ----------  HISTORY PAGE  ---------- */
-export default function HistoryPage() {
+export default function UserHistory() {
   const { isSignedIn } = useAuth();
   const axios = useAxios();
   const [history, setHistory] = useState<Session[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetched, setFetched] = useState(false); // one-shot guard
+  const [fetched, setFetched] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn || fetched) return;
     setFetched(true);
 
-    const fetchHistory = async () => {
-      try {
-        const { data } = await axios.get('/api/chat-session?sessionId=all');
-        setHistory(data ?? []);
-      } catch (err) {
-        console.error('History fetch error', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHistory();
+    axios
+      .get<Session[]>('/api/chat-session?sessionId=all')
+      .then(({ data }) => setHistory(data ?? []))
+      .catch((err) => console.error('History fetch error', err))
+      .finally(() => setLoading(false));
   }, [isSignedIn, axios, fetched]);
 
   if (!isSignedIn) {
