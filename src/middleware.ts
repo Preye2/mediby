@@ -1,43 +1,48 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api/(.*)",
+/* ---------- public pages ---------- */
+const isPublicPage = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
 ]);
 
-const roleMap: Record<string, string> = {
-  patient: "/patient/dashboard",
-  doctor: "/doctor/dashboard",
-  subadmin: "/sub-admin/dashboard",
-  superadmin: "/admin/dashboard",
-};
+/* ---------- protected API routes ---------- */
+const isProtectedApi = createRouteMatcher([
+  '/api/vapi/assistant',
+  '/api/vapi/call/assistant',
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
   const url = new URL(req.url);
 
-  /* 1. BANISH any org path (sign-in OR sign-up) instantly */
-  if (
-    url.pathname.includes("choose-organization") ||
-    url.pathname.includes("create-organization") ||
-    url.pathname.includes("select-organization")
-  ) {
-    const role = (sessionClaims?.publicMetadata as any)?.role ?? "patient";
-    return Response.redirect(new URL(roleMap[role] ?? "/patient/dashboard", req.url));
+  /* 1. 401 on protected API if no session */
+  if (isProtectedApi(req) && !userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  /* 2. Protect private routes */
-  if (!isPublicRoute(req)) await auth.protect();
-
-  /* 3. After sign-in/up skip org screens */
-  if (userId && (url.pathname === "/sign-in" || url.pathname === "/sign-up")) {
-    const role = (sessionClaims?.publicMetadata as any)?.role ?? "patient";
-    return Response.redirect(new URL(roleMap[role] ?? "/patient/dashboard", req.url));
+  /* 2. Redirect unauthenticated users for non-public pages */
+  if (!isPublicPage(req) && !userId) {
+    return NextResponse.redirect(new URL('/sign-in', req.url));
   }
+
+  /* 3. Skip org-picker after sign-in */
+  if (userId && (url.pathname === '/sign-in' || url.pathname === '/sign-up')) {
+    const rolePath = {
+      patient: '/patient/dashboard',
+      doctor: '/doctor/dashboard',
+      subadmin: '/sub-admin/dashboard',
+      superadmin: '/admin/dashboard',
+    };
+    const role = ((sessionClaims?.publicMetadata as any)?.role as keyof typeof rolePath) ?? 'patient';
+    return NextResponse.redirect(new URL(rolePath[role], req.url));
+  }
+
+  return NextResponse.next();
 });
 
 export const config = {
-  matcher: ["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)", "/(api|trpc)(.*)"],
+  matcher: ['/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)', '/(api|trpc)(.*)'],
 };

@@ -34,7 +34,8 @@
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "twilio": "^5.9.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
