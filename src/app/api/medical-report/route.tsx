@@ -80,17 +80,17 @@
 //     return NextResponse.json({ error: error.message || error });
 //   }
 // }
+// app/api/medical-report/route.ts
 import { database } from "@/config/database";
 import { openai } from "@/config/OpenAiModel";
 import { SessionChatTable } from "@/config/userSchema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { generatePdf } from "@/lib/pdf";
+import { uploadToS3 } from "@/lib/s3";
 
-const REPORT_PROMPT = `
-You are a medical report assistant. Generate a concise and professional report based on the user's conversation with the AI medical assistant.
-
+const REPORT_PROMPT = `You are a medical report assistant. Generate a concise and professional report based on the user's conversation with the AI medical assistant.
 Use the following fields:
-
 1. sessionId: a unique session identifier
 2. agent: the medical assistant’s name and specialty (e.g. "Dr. John Smith, Specialty: Cardiology")
 3. user: name of the patient (or use "Anonymous" if not provided)
@@ -104,111 +104,90 @@ Use the following fields:
 11. recommendations: list of AI recommendations (e.g., "get rest", "consult a doctor", etc.)
 
 Return your response **only** as a valid JSON object using this format:
-
 {
-"sessionId": "string",
-"agent": "string",
-"user": "string",
-"timestamp": "string",
-"mainComplaint": "string",
-"symptoms": ["string"],
-"summary": "string",
-"duration": "string",
-"severity": "string",
-"medicationsMentioned": ["string"],
-"recommendations": ["string"]
+  "sessionId": "string",
+  "agent": "string",
+  "user": "string",
+  "timestamp": "string",
+  "mainComplaint": "string",
+  "symptoms": ["string"],
+  "summary": "string",
+  "duration": "string",
+  "severity": "string",
+  "medicationsMentioned": ["string"],
+  "recommendations": ["string"]
 }
 
-Only include valid JSON. Do not include explanations or extra text.
+Only include valid JSON. Do not include explanations or extra text.`;
 
-Base your answer entirely on the doctor's profile and the conversation between the user and assistant.
-`;
-
-// TypeScript interface (optional)
-interface ReportType {
-  sessionId: string
-  agent: string
-  user: string
-  timestamp: string
-  mainComplaint: string
-  symptoms: string[]
-  summary: string
-  duration: string
-  severity: string
-  medicationsMentioned: string[]
-  recommendations: string[]
-}
-
-function validateReport(data: any): data is ReportType {
-  return (
-    typeof data?.sessionId === 'string' &&
-    typeof data?.agent === 'string' &&
-    typeof data?.user === 'string' &&
-    typeof data?.timestamp === 'string' &&
-    typeof data?.mainComplaint === 'string' &&
-    Array.isArray(data?.symptoms) &&
-    typeof data?.summary === 'string' &&
-    typeof data?.duration === 'string' &&
-    typeof data?.severity === 'string' &&
-    Array.isArray(data?.medicationsMentioned) &&
-    Array.isArray(data?.recommendations)
-  )
+/* ----------  shape after AI  ---------- */
+interface AIReport {
+  sessionId: string;
+  agent: string;
+  user: string;
+  timestamp: string;
+  mainComplaint: string;
+  symptoms: string[];
+  summary: string;
+  duration: string;
+  severity: string;
+  medicationsMentioned: string[];
+  recommendations: string[];
 }
 
 export async function POST(req: NextRequest) {
   const { sessionId, sessionParams, messages } = await req.json();
 
   try {
-    // Compose user input for the model
-    const promptUserMessage =
-      "AI medical assistant info: " +
-      JSON.stringify(sessionParams) +
-      ", Conversation: " +
-      JSON.stringify(messages);
-
+    /* 1.  ask LLM  */
     const completion = await openai.chat.completions.create({
       model: "meta-llama/llama-4-scout-17b-16e-instruct",
       messages: [
         { role: "system", content: REPORT_PROMPT },
-        { role: "user", content: promptUserMessage }
-      ]
+        {
+          role: "user",
+          content:
+            "AI medical assistant info: " +
+            JSON.stringify(sessionParams) +
+            ", Conversation: " +
+            JSON.stringify(messages),
+        },
+      ],
     });
 
-    const aiRaw = completion.choices[0].message?.content?.trim() || '';
-    console.log("AI raw response:", aiRaw);
+    /* 2.  clean AI response  */
+    const aiRaw = completion.choices[0].message?.content?.trim() || "";
+    const cleaned = aiRaw.replace(/```json?|```/g, "").trim();
+    const aiParsed: AIReport = JSON.parse(cleaned);
 
-    let aiParsed;
-    try {
-      aiParsed = JSON.parse(aiRaw);
-    } catch (parseError) {
-      console.error("JSON Parse Error:", parseError);
-      return NextResponse.json(
-        { error: "Invalid JSON format from AI response." },
-        { status: 500 }
-      );
-    }
+    /* 3.  cast severity to literal union  */
+    const severity =
+      aiParsed.severity === "mild" || aiParsed.severity === "moderate" || aiParsed.severity === "severe"
+        ? aiParsed.severity
+        : "moderate";
 
-    if (!validateReport(aiParsed)) {
-      return NextResponse.json(
-        { error: "AI returned an invalid report structure." },
-        { status: 400 }
-      );
-    }
+    /* 4.  build final report  */
+    const report = { ...aiParsed, severity };
 
-    await database
-      .update(SessionChatTable)
-      .set({
-        report: aiParsed,
-        conversation: messages
-      })
-      .where(eq(SessionChatTable.sessionId, sessionId));
+   /* 5.  generate PDF & upload  */
+const pdfBuffer = await generatePdf({ ...report, conversation: messages });
+const pdfUrl = await uploadToS3(pdfBuffer, `reports/${sessionId}.pdf`);
 
-    return NextResponse.json(aiParsed);
+/* 6.  final shape WITH pdfUrl  */
+const reportForDb = { ...report, pdfUrl }; // <-- extra field added here
+
+await database
+  .update(SessionChatTable)
+  .set({
+    report: sql`${JSON.stringify(reportForDb)}::jsonb`, // raw JSONB literal
+    needsSummary: 0,
+    status: 'completed',
+  })
+  .where(eq(SessionChatTable.sessionId, sessionId));
+
+    return NextResponse.json(report);
   } catch (error: any) {
-    console.error("Error generating report:", error);
-    return NextResponse.json(
-      { error: error.message || "Unexpected error." },
-      { status: 500 }
-    );
+    console.error('Medical-report error:', error);
+    return NextResponse.json({ error: error.message || 'Unexpected error.' }, { status: 500 });
   }
 }

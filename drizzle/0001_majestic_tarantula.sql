@@ -1,0 +1,1 @@
+ALTER TABLE "sessionChatTable" ADD COLUMN "updatedAt" timestamp DEFAULT now();

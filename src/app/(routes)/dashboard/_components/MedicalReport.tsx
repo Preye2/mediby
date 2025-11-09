@@ -1,7 +1,7 @@
 // src/app/(routes)/dashboard/_components/MedicalReport.tsx
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -13,103 +13,77 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { Loader2, DownloadCloud, RefreshCw } from 'lucide-react';
+import { useAxios } from '@/lib/axios';
 
-/* ----------  local type (DB friendly)  ---------- */
-type SessionParams = {
-  id: number | string; // ← accept both
-  sessionId?: string;
+/* ----------  types (exactly what the webhook stores)  ---------- */
+type ReportT = {
+  mainComplaint?: string;
+  symptoms?: string[];
+  duration?: string;
+  severity?: 'mild' | 'moderate' | 'severe';
+  medicationsMentioned?: string[];
+  recommendations?: string[];
+  summary?: string;
+  pdfUrl?: string;
+};
+
+type HistoryT = {
+  id: string;
+  sessionId: string;
   note?: string;
   createdOn: string;
-  selectedDoctor: {
-    name: string;
-    specialty: string;
-    image: string;
-  };
-  report?: {
-    user?: string;
-    symptoms?: string[];
-    duration?: string;
-    severity?: string;
-    medicationsMentioned?: string[];
-    recommendations?: string[];
-    summary?: string;
-  };
+  selectedDoctor: { name: string; specialty: string; image: string };
+  report?: ReportT;
+  needsSummary: number; // 0 = ready, 1 = still summarising
 };
 
-/* ----------  props  ---------- */
-type Props = {
-  history: SessionParams[];
-};
+type Props = { history: HistoryT[] };
 
 export default function MedicalReport({ history }: Props) {
-  const tableRef = useRef<HTMLTableElement>(null);
+  const axios = useAxios();
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
   const itemsPerPage = 5;
 
-  const filteredHistory = history.filter(
-    (report) =>
-      report.selectedDoctor.name.toLowerCase().includes(search.toLowerCase()) ||
-      (report.note?.toLowerCase() ?? '').includes(search.toLowerCase())
+  /* ----------  filter  ---------- */
+  const filtered = history.filter(
+    (h) =>
+      h.selectedDoctor.name.toLowerCase().includes(search.toLowerCase()) ||
+      (h.note?.toLowerCase() ?? '').includes(search.toLowerCase())
   );
 
-  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
-  const currentItems = filteredHistory.slice(
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const currentItems = filtered.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  const exportToPDF = async () => {
-    if (!tableRef.current) return;
-    const canvas = await html2canvas(tableRef.current);
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('landscape', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save('medical-report.pdf');
+  /* ----------  download PDF (already created by webhook)  ---------- */
+  const downloadPdf = async (row: HistoryT) => {
+    if (!row.report?.pdfUrl) return;
+    window.open(row.report.pdfUrl, '_blank');
   };
 
-  const handleDownload = (report: SessionParams) => {
-    const doc = new jsPDF();
-    let y = 10;
-
-    doc.setFontSize(16);
-    doc.text('Medical Report', 10, y);
-    y += 10;
-
-    doc.setFontSize(12);
-    doc.text(`Session ID: ${report.id}`, 10, y);
-    y += 8;
-    doc.text(`AI Assistant: ${report.selectedDoctor.name}`, 10, y);
-    y += 8;
-    doc.text(`User: ${report.report?.user || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Date: ${new Date(report.createdOn).toLocaleString()}`, 10, y);
-    y += 8;
-
-    doc.text(`Main Complaint: ${report.note || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Symptoms: ${report.report?.symptoms?.join(', ') || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Duration: ${report.report?.duration || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Severity: ${report.report?.severity || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Medications Mentioned: ${report.report?.medicationsMentioned?.join(', ') || 'N/A'}`, 10, y);
-    y += 8;
-    doc.text(`Recommendations: ${report.report?.recommendations?.join(', ') || 'N/A'}`, 10, y);
-    y += 8;
-
-    const summary = report.report?.summary || 'N/A';
-    const splitSummary = doc.splitTextToSize(`Summary: ${summary}`, 180);
-    doc.text(splitSummary, 10, y);
-
-    doc.save(`medical_report_${report.id}.pdf`);
-  };
+  /* ----------  poll until summary ready  ---------- */
+  const refresh = async (sessionId: string) => {
+  setLoadingId(sessionId);
+  try {
+    await axios.post('/api/medical-report', { sessionId });
+    // *** do NOT reload ***  just re-fetch the row
+    const { data } = await axios.get(`/api/chat-session?sessionId=${sessionId}`);
+    const updated = history.map((h) => (h.sessionId === sessionId ? data : h));
+    // parent prop is read-only, so lift this up via callback or mutate SWR
+    // quick hack: replace local slice
+    const idx = history.findIndex((h) => h.sessionId === sessionId);
+    if (idx !== -1) history[idx] = data;
+    setLoadingId(null);
+  } catch {
+    setLoadingId(null);
+  }
+};
 
   return (
     <motion.div
@@ -133,6 +107,7 @@ export default function MedicalReport({ history }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
+        {/* search */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <input
             type="text"
@@ -144,12 +119,10 @@ export default function MedicalReport({ history }: Props) {
             }}
             className="px-4 py-2 rounded bg-gray-700 text-white border border-gray-600 w-full md:w-1/2"
           />
-          <Button onClick={exportToPDF} variant="secondary" className="w-full md:w-auto">
-            Export to PDF
-          </Button>
         </div>
 
-        <div ref={tableRef} className="overflow-x-auto rounded-xl">
+        {/* table */}
+        <div className="overflow-x-auto rounded-xl">
           <Table className="min-w-full text-white">
             <TableCaption className="text-gray-400">
               A list of your recent medical reports.
@@ -157,42 +130,68 @@ export default function MedicalReport({ history }: Props) {
             <TableHeader>
               <TableRow className="bg-gray-700">
                 <TableHead className="text-white">AI Assistant</TableHead>
-                <TableHead className="text-white">Description</TableHead>
+                <TableHead className="text-white">Complaint</TableHead>
+                <TableHead className="text-white">Severity</TableHead>
                 <TableHead className="text-white">Date</TableHead>
                 <TableHead className="text-white text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {currentItems.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400">
-                    No reports found.
+              {currentItems.map((row) => (
+                <motion.tr
+                  key={row.sessionId}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="hover:bg-gray-700 transition-all"
+                >
+                  <TableCell className="font-medium">{row.selectedDoctor.name}</TableCell>
+                  <TableCell>{row.report?.mainComplaint || row.note || '—'}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs ${
+                        row.report?.severity === 'severe'
+                          ? 'bg-red-600'
+                          : row.report?.severity === 'moderate'
+                          ? 'bg-yellow-600'
+                          : 'bg-green-600'
+                      }`}
+                    >
+                      {row.report?.severity || 'pending'}
+                    </span>
                   </TableCell>
-                </TableRow>
-              ) : (
-                currentItems.map((report) => (
-                  <motion.tr
-                    key={report.id} // ← stable key
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.05 }}
-                    className="hover:bg-gray-700 transition-all"
-                  >
-                    <TableCell className="font-medium">{report.selectedDoctor.name}</TableCell>
-                    <TableCell>{report.note || '—'}</TableCell>
-                    <TableCell>{new Date(report.createdOn).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleDownload(report)}>
-                        Download
+                  <TableCell>{new Date(row.createdOn).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
+                    {row.needsSummary === 1 ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => refresh(row.sessionId)}
+                        disabled={loadingId === row.sessionId}
+                      >
+                        {loadingId === row.sessionId ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4" />
+                        )}
                       </Button>
-                    </TableCell>
-                  </motion.tr>
-                ))
-              )}
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => downloadPdf(row)}
+                        disabled={!row.report?.pdfUrl}
+                      >
+                        <DownloadCloud className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </motion.tr>
+              ))}
             </TableBody>
           </Table>
         </div>
 
+        {/* pagination */}
         <div className="flex justify-between items-center mt-6">
           <Button
             variant="outline"
@@ -202,9 +201,7 @@ export default function MedicalReport({ history }: Props) {
           >
             Previous
           </Button>
-          <p className="text-white">
-            Page {currentPage} of {totalPages}
-          </p>
+          <p className="text-white">Page {currentPage} of {totalPages}</p>
           <Button
             variant="outline"
             size="sm"
