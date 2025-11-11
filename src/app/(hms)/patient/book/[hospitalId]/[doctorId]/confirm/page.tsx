@@ -1,10 +1,10 @@
-"use client";
-
+// src/app/(hms)/patient/book/[hospitalId]/[doctorId]/confirm/page.tsx
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation"; // ← BOTH here
 import PaystackPop from "@paystack/inline-js";
 import { useState, useEffect } from "react";
+import { toNaira } from '@/lib/money'; 
 import { useUser } from "@clerk/nextjs";
 import axios from "axios";
 import { useRouter } from "next/navigation";
@@ -104,7 +104,7 @@ export default function ConfirmPaymentPage() {
 
         <p className="text-gray-700">Date: {date}</p>
         <p className="text-gray-700">Slot: {slot}</p>
-        <p className="text-3xl font-bold text-green-600">₦{Math.round(fee / 100)}</p>
+        <p className="text-3xl font-bold text-green-600">{toNaira(fee)}</p>
 
         <button
   onClick={handlePay}

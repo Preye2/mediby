@@ -1,3 +1,4 @@
+// src/app/(hms)/patient/book/page.tsx
 import HospitalSelector from "@/components/hms/HospitalSelector";
 
 export default function BookPage() {

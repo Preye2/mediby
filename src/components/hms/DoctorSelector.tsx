@@ -1,7 +1,10 @@
+// src/components/hms/DoctorSelector.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { toNaira } from "@/lib/money";
 import { useRouter } from "next/navigation";
 
 export default function DoctorSelector({ hospitalId }: { hospitalId: string }) {
@@ -32,7 +35,7 @@ export default function DoctorSelector({ hospitalId }: { hospitalId: string }) {
           <h2 className="font-semibold text-center">{d.fullName}</h2>
           <p className="text-sm text-gray-600 text-center">{d.specialization}</p>
           <p className="text-sm text-green-600 text-center mt-1">
-            ₦{Math.round(d.fee / 100)} consultation
+            {toNaira(d.fee)} consultation
           </p>
         </div>
       ))}

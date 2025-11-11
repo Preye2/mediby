@@ -1,3 +1,4 @@
+// src/lib/hms/seedDoctors.ts
 import "dotenv/config";
 import { database } from "@/config/database";
 import { doctors } from "@/config/userSchema";
@@ -8,7 +9,7 @@ const dummyDocs = [
     hospitalId: 1,
     fullName: "Dr. Preye Godgift",
     specialization: "Cardiology",
-    fee: 2500,
+    fee: 250,
     bio: "Senior cardiologist with 15 yrs experience.",
     avatar: "/doc1.jpg",
   },
@@ -17,7 +18,7 @@ const dummyDocs = [
     hospitalId: 1,
     fullName: "Dr. Victoria Ebi",
     specialization: "Dentistry",
-    fee: 2000,
+    fee: 200,
     bio: "Loves kids, fluent in Hausa & English.",
     avatar: "/doc2.jpg",
   },

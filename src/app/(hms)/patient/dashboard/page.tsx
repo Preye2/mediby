@@ -1,9 +1,11 @@
+// src/app/(hms)/patient/dashboard/page.tsx
 "use client";
 
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useUser, UserButton } from "@clerk/nextjs";
+import { toNaira } from '@/lib/money';
 import { useEffect, useState } from "react";
 
 type Appointment = {
@@ -139,7 +141,7 @@ export default function PatientDashboard() {
                   <p className="font-semibold">{ap.hospitalName}</p>
                   <p className="text-sm text-gray-600">Dr. {ap.doctorName}</p>
                   <p className="text-xs">📅 {ap.date}</p>
-                  <p className="text-xs">💰 ₦{ap.fee / 100}</p>
+                  <p className="text-xs">💰 {toNaira(ap.fee)}</p>
                 </div>
               ))}
             </div>

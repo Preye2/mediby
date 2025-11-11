@@ -1,6 +1,9 @@
+// src/app/(hms)/sub-admin/dashboard/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
+import { toNaira } from '@/lib/money';
 import axios from "axios";
 
 type Appointment = {
@@ -59,7 +62,7 @@ export default function SubAdminDashboard() {
                     </p>
                     <p className="text-sm">👨‍⚕️ {ap.doctorName}</p>
                     <p className="text-xs text-gray-500">
-                      Ref: ₦{ap.fee / 100}
+                      <p className="text-xs text-gray-500">Ref: {toNaira(ap.fee)}</p>
                     </p>
                   </div>
                   <div className="flex gap-2">

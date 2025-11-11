@@ -1,3 +1,4 @@
+// src/lib/hms/seedHospitals.ts
 import "dotenv/config";
 import { database } from "@/config/database";
 import { hospitals } from "@/config/userSchema";
