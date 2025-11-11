@@ -1,44 +1,44 @@
 // src/app/(routes)/dashboard/_components/UserHistory.tsx
-"use client";
+'use client';
 
-import { useAuth, SignInButton } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef } from 'react';
 import { useAxios } from '@/lib/axios';
-import MedicalReport from './MedicalReport';
-import { type Session, type AiDoctorAgent } from '@/types/session'; // ← single source
+import MedicalReport from '@/app/(routes)/dashboard/_components/MedicalReport';
+import type { HistoryT } from '@/types/history';
 
 export default function UserHistory() {
   const { isSignedIn } = useAuth();
+  const router = useRouter();
   const axios = useAxios();
-  const [history, setHistory] = useState<Session[] | null>(null);
+  const [history, setHistory] = useState<HistoryT[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetched, setFetched] = useState(false);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (!isSignedIn || fetched) return;
-    setFetched(true);
+    if (!isSignedIn) {
+      router.push('/sign-in');
+      return;
+    }
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
 
     axios
-      .get<Session[]>('/api/chat-session?sessionId=all')
-      .then(({ data }) => setHistory(data ?? []))
-      .catch((err) => console.error('History fetch error', err))
+      .get<any[]>('/api/chat-session?sessionId=all')
+      .then(({ data }) => {
+        const mapped: HistoryT[] = (data ?? []).map((s) => ({
+          sessionId: s.sessionId,
+          createdAt: s.createdOn,
+          report: s.report,
+        }));
+        setHistory(mapped);
+      })
+      .catch((err) => console.error('Error fetching history:', err))
       .finally(() => setLoading(false));
-  }, [isSignedIn, axios, fetched]);
+  }, [isSignedIn, router]);
 
-  if (!isSignedIn) {
-    return (
-      <div className="grid h-screen place-items-center">
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">Please sign in to view your history.</p>
-          <SignInButton mode="modal">
-            <button className="btn-primary">Sign In</button>
-          </SignInButton>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
+  if (!isSignedIn || loading) {
     return <p className="text-center mt-10 text-gray-500">Loading your consultation history...</p>;
   }
 

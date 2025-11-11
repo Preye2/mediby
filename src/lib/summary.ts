@@ -23,5 +23,11 @@ export async function generateSummary(conversation: string): Promise<{
 Conversation:\n${conversation}`;
 
   const content = await groq(prompt);
-  return JSON.parse(content.replace(/```json?|```/g, '').trim());
+  const raw = JSON.parse(content.replace(/```json?|```/g, '').trim());
+
+  // lock the literal union
+  return {
+    ...raw,
+    severity: raw.severity as 'mild' | 'moderate' | 'severe',
+  };
 }
