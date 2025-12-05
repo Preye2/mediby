@@ -1,3 +1,4 @@
+// src/lib/hms/setRole.ts
 import { clerkClient } from "@clerk/nextjs/server";
 
 export async function setRole(userId: string, role: string) {

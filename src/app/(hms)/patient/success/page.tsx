@@ -16,7 +16,7 @@ export default function SuccessPage() {
         <p className="text-gray-700">
           Your appointment is now waiting for sub-admin approval. You’ll get an email/SMS once confirmed.
         </p>
-        <Link href="/dashboard" className="btn-gradient inline-block">
+        <Link href="/patient/dashboard" className="btn-gradient inline-block">
           Go to Dashboard
         </Link>
       </motion.div>

@@ -1,3 +1,4 @@
+// src/app/api/hms/hospitals/route.ts
 import { NextResponse } from "next/server";
 import { database } from "@/config/database";
 import { hospitals } from "@/config/userSchema";

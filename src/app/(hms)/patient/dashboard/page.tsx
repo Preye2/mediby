@@ -18,6 +18,7 @@ type Appointment = {
   hospitalName: string;
   fee: number;
   paystackRef?: string;
+  twilioRoomSid?: string | null;
 };
 
 export default function PatientDashboard() {
@@ -117,10 +118,12 @@ export default function PatientDashboard() {
                       Details
                     </Link>
                     {/* JOIN CALL button – we wire next */}
-                    <Link href={`/patient/call/${ap.id}`} className="btn-gradient !py-2 !px-3 text-xs">
-                      📹 Join Call
-                    </Link>
-                  </div>
+                   {ap.twilioRoomSid && (
+  <Link href={`/call/${ap.twilioRoomSid}`} className="btn-gradient !py-2 !px-3 text-xs">
+    📹 Join Call
+  </Link>
+)}
+</div>
                 </motion.div>
               ))}
             </div>

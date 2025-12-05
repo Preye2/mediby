@@ -1,93 +1,143 @@
 // src/app/(hms)/sub-admin/dashboard/page.tsx
-
 "use client";
 
+import { useUser } from "@clerk/nextjs";
+import { motion } from "framer-motion";
+import { toNaira } from "@/lib/money";
 import { useEffect, useState } from "react";
-import { toNaira } from '@/lib/money';
-import axios from "axios";
 
+/* ----------  TYPE – matches API response  ---------- */
 type Appointment = {
   id: number;
   patientEmail: string;
-  date: string; // 2025-06-20
-  timeSlot: string; // "09:00-09:30"
-  status: "paid" | "approved";
-  doctorName: string;
-  fee: number; // kobo
+  doctor: { fullName: string; specialization: string };
+  date: string;
+  timeSlot: string;
+  fee: number;
+  status: string;
+  livekitRoomName?: string | null;
 };
 
+/* ----------  UI HELPERS  ---------- */
+const GlassCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
+  <div className={`glass rounded-2xl p-6 border border-white/20 ${className}`}>{children}</div>
+);
+
+const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+  <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 mb-6">{children}</h2>
+);
+
+/* ----------  PAGE  ---------- */
 export default function SubAdminDashboard() {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const { user, isLoaded } = useUser();
+  const [pending, setPending] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
-  // Load ONLY this hospital's paid appointments
-  useEffect(() => {
-    axios
-      .get("/api/hms/appointments/sub-admin")
-      .then((res) => setAppointments(res.data))
-      .catch(() => setAppointments([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleAction = async (id: number, action: "approve" | "reject") => {
-    if (action === "reject") {
-      alert("Reject not wired yet – ping me if needed!");
-      return;
+  /* ----------  FETCH  ---------- */
+  const fetchPending = async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/hms/sub-admin/appointments?status=paid");
+      if (!res.ok) throw new Error(res.statusText);
+      const data: Appointment[] = await res.json();
+      setPending(data);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
     }
-    await axios.post("/api/hms/appointments/approve", { id });
-    // instantly update row
-    setAppointments((prev) =>
-      prev.map((ap) => (ap.id === id ? { ...ap, status: "approved" } : ap))
-    );
   };
 
-  if (loading) return <p className="p-6">Loading appointments…</p>;
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const meta = (user.publicMetadata as any)?.hospitalId;
+    if (!meta) return; // guard below will show message
+    fetchPending();
+  }, [user, isLoaded]);
+
+  /* ----------  ACTIONS  ---------- */
+  const act = async (id: number, action: "approve" | "cancel") => {
+    try {
+      const res = await fetch("/api/hms/sub-admin/appointments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: id, action }),
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      fetchPending(); // refresh list
+    } catch (e: any) {
+      alert(action + " failed: " + e.message);
+    }
+  };
+
+  /* ----------  GUARD – no hospitalId  ---------- */
+  if (isLoaded && !((user?.publicMetadata as any)?.hospitalId)) {
+    return (
+      <main className="magic-bg min-h-screen flex items-center justify-center">
+        <GlassCard>Unauthorized – hospital not assigned</GlassCard>
+      </main>
+    );
+  }
 
   return (
-    <main className="magic-bg min-h-screen p-6">
-      <div className="glass max-w-5xl mx-auto p-8">
-        <h1 className="text-3xl font-bold mb-6">🏢 Sub-Admin Dashboard</h1>
+    <main className="magic-bg min-h-screen text-slate-800 px-6 pt-32 pb-16">
+      <style jsx global>{`
+        .magic-bg { background: #f8fafc; }
+        .glass {
+          background: rgba(255, 255, 255, 0.7);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+        .btn-gradient {
+          @apply inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all;
+        }
+        .btn-secondary {
+          @apply inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold text-slate-700 bg-white/80 hover:bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all;
+        }
+      `}</style>
 
-        {appointments.length === 0 ? (
-          <p className="text-gray-600">No pending appointments.</p>
-        ) : (
-          <div className="grid gap-4">
-            {appointments.map((ap) => (
-              <div key={ap.id} className="glass p-4 rounded-xl">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold">👤 {ap.patientEmail}</p>
-                    <p className="text-sm text-gray-600">
-                      📅 {ap.date} · 🕘 {ap.timeSlot}
-                    </p>
-                    <p className="text-sm">👨‍⚕️ {ap.doctorName}</p>
-                    <p className="text-xs text-gray-500">
-                      <p className="text-xs text-gray-500">Ref: {toNaira(ap.fee)}</p>
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {ap.status === "paid" && (
-                      <>
-                        <button
-                          onClick={() => handleAction(ap.id, "approve")}
-                          className="px-4 py-2 rounded-full bg-green-600 text-white hover:bg-green-700"
-                        >
-                          ✅ Approve
-                        </button>
-                        <button
-                          onClick={() => handleAction(ap.id, "reject")}
-                          className="px-4 py-2 rounded-full bg-red-600 text-white hover:bg-red-700"
-                        >
-                          ❌ Reject
-                        </button>
-                      </>
-                    )}
-                    {ap.status === "approved" && (
-                      <span className="text-green-600 font-semibold">Approved</span>
-                    )}
-                  </div>
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 mb-8">Hospital Admin</h1>
+
+        <SectionTitle>Pending Approvals</SectionTitle>
+
+        {loading && <GlassCard className="text-center">Loading…</GlassCard>}
+        {err && <GlassCard className="text-center text-red-600">{err}</GlassCard>}
+        {!loading && !err && pending.length === 0 && (
+          <GlassCard className="text-center">No pending bookings.</GlassCard>
+        )}
+
+        {!loading && !err && pending.length > 0 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pending.map((b) => (
+              <motion.div key={b.id} className="glass p-6 rounded-2xl space-y-3">
+                <p className="font-semibold text-slate-900">{b.patientEmail}</p>
+                <p className="text-sm text-slate-600">
+                  Dr. {b.doctor.fullName} · {b.doctor.specialization}
+                </p>
+                <p className="text-sm">
+                  📅 {b.date} · 🕘 {b.timeSlot}
+                </p>
+                <p className="text-sm font-bold text-emerald-600">{toNaira(b.fee)}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => act(b.id, "approve")}
+                    className="btn-gradient !py-2 !px-3 text-xs"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => act(b.id, "cancel")}
+                    className="btn-secondary !py-2 !px-3 text-xs"
+                  >
+                    Reject
+                  </button>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}

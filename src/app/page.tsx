@@ -277,7 +277,7 @@ const Features = () => (
               Secure & private
             </li>
           </ul>
-          <Link href="/dashboard" className="mt-6 block bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold text-center transition">
+          <Link href="/patient/book" className="mt-6 block bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold text-center transition">
             Start Video Call
           </Link>
         </div>

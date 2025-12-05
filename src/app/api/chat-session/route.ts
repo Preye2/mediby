@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { database } from "@/config/database";
 import { SessionChatTable, users } from "@/config/userSchema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
 /* ----------  helper  ---------- */
@@ -35,45 +35,43 @@ export async function POST(request: Request) {
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    /* 1.  Safe user fetch + upsert */
-    let email = `${userId}@clerk.user`;
-    let name = "User";
-    try {
-      const client = await clerkClient();
-      const user = await client.users.getUser(userId);
-      email = user.emailAddresses[0]?.emailAddress ?? email;
-      name =
-        [user.firstName, user.lastName]
-          .filter(Boolean)
-          .join(" ")
-          .trim() || email.split("@")[0];
-    } catch {
-      /* Clerk unavailable – use fallbacks */
-    }
+    /* 1.  Guaranteed row – upsert by email, then fetch */
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const email = user.emailAddresses[0]?.emailAddress ?? `${userId}@clerk.user`;
+    const name =
+      [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || email.split("@")[0];
 
     await database
       .insert(users)
       .values({ clerkId: userId, email, name })
       .onConflictDoNothing();
+
     const [row] = await database
       .select()
       .from(users)
-      .where(eq(users.clerkId, userId))
+      .where(eq(users.email, email))
       .limit(1);
-    if (!row) throw new Error("User row still missing after upsert");
+    if (!row) throw new Error("User row still missing after email upsert");
 
-    /* 2.  Create session – JSON cast + Date */
+    /* 2.  Create session – let Drizzle cast JSON */
     const sessionId = uuidv4();
     await database.insert(SessionChatTable).values({
       sessionId,
       note: notes,
-      conversation: sql`${JSON.stringify([])}::jsonb`,
-      selectedDoctor: sql`${JSON.stringify(normaliseDoctor(rawDoctor))}::jsonb`,
-      report: sql`${JSON.stringify({})}::jsonb`,
+      conversation: [],                               // empty array
+      selectedDoctor: normaliseDoctor(rawDoctor),     // plain object
+      report: null,                                   // null, not {}
       status: "active",
-      userId,
-      createdBy: email,
-      createdOn: new Date(), // Date → timestamp
+      needsSummary: 1,
+      language: "english",
+      confidence: 0.85,
+      userId: row.clerkId,
+      createdBy: userId,                              // Clerk user id
+      createdOn: new Date(),
     });
 
     return NextResponse.json({ sessionId }, { status: 201 });
@@ -86,6 +84,7 @@ export async function POST(request: Request) {
   }
 }
 
+/* ----------  GET  ---------- */
 /* ----------  GET  ---------- */
 export async function GET(request: Request) {
   try {
@@ -108,6 +107,9 @@ export async function GET(request: Request) {
       return NextResponse.json(rows);
     }
 
+    /* ---- debug ---- */
+    console.log("🔍 GET /api/chat-session", { sessionId, authUserId: userId });
+
     const [row] = await database
       .select()
       .from(SessionChatTable)
@@ -121,7 +123,7 @@ export async function GET(request: Request) {
 
     if (!row)
       return NextResponse.json(
-        { error: "Session not found" },
+        { error: "Session not found or does not belong to user" },
         { status: 404 }
       );
     return NextResponse.json(row);
