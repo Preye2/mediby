@@ -1,7 +1,14 @@
+/* src/app/globals.css */
 
-@import "tailwindcss";
+/* 1️⃣ Tailwind 3.3.x core layers (MUST be first) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2️⃣ third-party plugin */
 @import "tw-animate-css";
 
+/* 3️⃣ custom directives */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
